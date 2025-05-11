@@ -1,0 +1,7 @@
+{
+  "name": "study-group",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
