@@ -10,6 +10,7 @@ export default defineConfig({
     react(),
     legacy()
   ],
+  base: "study-group",
   test: {
     globals: true,
     environment: 'jsdom',
