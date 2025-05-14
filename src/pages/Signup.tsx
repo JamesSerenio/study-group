@@ -1,61 +1,102 @@
-import React, { useState } from 'react';
-import { IonPage, IonContent, IonInput, IonButton, IonToast, IonText } from '@ionic/react';
+import {
+  IonPage,
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonContent,
+  IonInput,
+  IonButton,
+  IonSelect,
+  IonSelectOption,
+  IonText
+} from '@ionic/react';
+import { useState } from 'react';
 import { useHistory } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
+import { supabase } from '../supabaseClient';
 
 const Signup: React.FC = () => {
   const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [toast, setToast] = useState({ show: false, msg: '' });
+  const [role, setRole] = useState<'Teacher' | 'Student'>('Student');
   const history = useHistory();
 
   const handleSignup = async () => {
-    if (!email || !username || !password) {
-      return setToast({ show: true, msg: 'All fields are required' });
-    }
-
-    const { user, error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
 
-    if (error) {
-      setToast({ show: true, msg: error.message });
-    } else if (user) {
-      // You can update the user profile to store the username after sign up
-      const { error: profileError } = await supabase
-        .from('users')
-        .upsert([{ user_email: email, username, user_id: user.id }]);
+    if (error) return alert(error.message);
 
-      if (profileError) {
-        setToast({ show: true, msg: profileError.message });
-      } else {
-        history.push('/login'); // Redirect to login after successful sign-up
-      }
+    const user = data?.user;
+    if (user) {
+      // Insert user data into the users table
+      const { error: insertError } = await supabase.from('users').insert({
+        id: user.id,
+        email,
+        role
+      });
+
+      if (insertError) return alert(insertError.message);
+
+      // Redirect to the home page after successful sign up
+      history.push('/home');
     }
   };
 
   return (
     <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Signup</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+
       <IonContent className="ion-padding">
-        <h2>Sign Up</h2>
-        <IonInput placeholder="Email" onIonChange={(e) => setEmail(e.detail.value!)} />
-        <IonInput placeholder="Username" onIonChange={(e) => setUsername(e.detail.value!)} />
-        <IonInput placeholder="Password" type="password" onIonChange={(e) => setPassword(e.detail.value!)} />
-        <IonButton expand="block" onClick={handleSignup}>Sign Up</IonButton>
-        <IonText>
-          Already have an account?{' '}
-          <IonText color="primary" onClick={() => history.push('/login')} style={{ cursor: 'pointer' }}>
-            Login
-          </IonText>
-        </IonText>
-        <IonToast
-          isOpen={toast.show}
-          message={toast.msg}
-          duration={2000}
-          onDidDismiss={() => setToast({ show: false, msg: '' })}
+        <IonInput
+          label="Email"
+          labelPlacement="floating"
+          placeholder="Enter email"
+          type="email"
+          value={email}
+          onIonChange={(e) => setEmail(e.detail.value!)}
+          className="ion-margin-bottom"
         />
+        <IonInput
+          label="Password"
+          labelPlacement="floating"
+          placeholder="Enter password"
+          type="password"
+          value={password}
+          onIonChange={(e) => setPassword(e.detail.value!)}
+          className="ion-margin-bottom"
+        />
+        <IonSelect
+          label="Role"
+          labelPlacement="floating"
+          value={role}
+          onIonChange={(e) => setRole(e.detail.value)}
+          className="ion-margin-bottom"
+        >
+          <IonSelectOption value="Student">Student</IonSelectOption>
+          <IonSelectOption value="Teacher">Teacher</IonSelectOption>
+        </IonSelect>
+
+        <IonButton expand="block" onClick={handleSignup}>
+          Signup
+        </IonButton>
+
+        <IonText>
+          <p className="ion-padding-top">
+            Already have an account?{' '}
+            <span
+              style={{ color: 'blue', cursor: 'pointer' }}
+              onClick={() => history.push('/login')}
+            >
+              Login here
+            </span>
+          </p>
+        </IonText>
       </IonContent>
     </IonPage>
   );

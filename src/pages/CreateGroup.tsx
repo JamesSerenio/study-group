@@ -1,65 +1,58 @@
-import React, { useState } from 'react';
-import { IonPage, IonContent, IonInput, IonButton, IonToast } from '@ionic/react';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonInput, IonButton, } from '@ionic/react';
+import { useState } from 'react';
 import { useHistory } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
+import { supabase } from '../supabaseClient';
 
 const CreateGroup: React.FC = () => {
   const [name, setName] = useState('');
-  const [subject, setSubject] = useState('');
-  const [toast, setToast] = useState({ show: false, msg: '' });
+  const [desc, setDesc] = useState('');
   const history = useHistory();
 
   const handleCreate = async () => {
-    const uid = Number(localStorage.getItem('user_id'));
-    if (!name || !subject || !uid) {
-      return setToast({ show: true, msg: 'All fields are required' });
+    const user = await supabase.auth.getUser();
+    if (user.data.user) {
+      const { error } = await supabase.from('groups').insert({
+        name,
+        description: desc,
+        created_by: user.data.user.id
+      });
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      history.push('/home');
     }
-
-    const { data, error } = await supabase
-      .from('groups')
-      .insert([{ name, subject, created_by: uid }])
-      .select(); // remove .single() for compatibility
-
-    if (error || !data || data.length === 0) {
-      return setToast({ show: true, msg: error?.message || 'Failed to create group' });
-    }
-
-    const group = data[0]; // safely access first inserted row
-
-    const { error: memberError } = await supabase
-      .from('group_members')
-      .insert([{ group_id: group.group_id, user_id: uid }]);
-
-    if (memberError) {
-      return setToast({ show: true, msg: memberError.message });
-    }
-
-    history.push('/dashboard');
   };
 
   return (
     <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Create Group</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+
       <IonContent className="ion-padding">
-        <h2>Create Group</h2>
         <IonInput
-          placeholder="Group Name"
+          label="Group Name"
+          labelPlacement="floating"
+          placeholder="Enter group name"
           value={name}
           onIonChange={e => setName(e.detail.value!)}
+          className="ion-margin-bottom"
         />
         <IonInput
-          placeholder="Subject"
-          value={subject}
-          onIonChange={e => setSubject(e.detail.value!)}
+          label="Description"
+          labelPlacement="floating"
+          placeholder="Enter group description"
+          value={desc}
+          onIonChange={e => setDesc(e.detail.value!)}
+          className="ion-margin-bottom"
         />
         <IonButton expand="block" onClick={handleCreate}>
-          Create
+          Create Group
         </IonButton>
-        <IonToast
-          isOpen={toast.show}
-          message={toast.msg}
-          duration={2000}
-          onDidDismiss={() => setToast({ show: false, msg: '' })}
-        />
       </IonContent>
     </IonPage>
   );

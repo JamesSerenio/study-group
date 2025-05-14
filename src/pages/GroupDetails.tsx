@@ -1,148 +1,242 @@
-import React, { useEffect, useState } from 'react';
-import { IonPage, IonContent, IonButton, IonToast } from '@ionic/react';
-import { useParams } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
-
-interface Member {
-  user_id: number;
-  username: string;
-}
+import {
+  IonPage,
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonContent,
+  IonButton,
+  IonText,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonInput,
+  IonTextarea,  // <-- Change to IonTextarea
+  IonSpinner,
+} from '@ionic/react';
+import { useParams, useHistory } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { supabase } from '../supabaseClient';
 
 interface Group {
-  group_id: number;
+  id: string;
   name: string;
   subject: string;
+  description: string;
+  creator_email: string;
+}
+
+interface Params {
+  id: string;
 }
 
 const GroupDetails: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<Params>();
   const [group, setGroup] = useState<Group | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [joined, setJoined] = useState(false);
-  const [toast, setToast] = useState({ show: false, msg: '' });
-
-  const fetchDetails = async () => {
-    const groupId = Number(id);
-
-    // Fetch group info
-    const { data: grp, error: groupError } = await supabase
-      .from('groups')
-      .select('*')
-      .eq('group_id', groupId)
-      .single();
-
-    if (groupError || !grp) {
-      console.error('Group Error: ', groupError?.message);
-      return;
-    }
-
-    setGroup(grp);
-
-    // Fetch members with joined user data
-    const { data: mems, error: membersError } = await supabase
-      .from('group_members')
-      .select('user_id, users ( username )')
-      .eq('group_id', groupId);
-
-    if (membersError || !mems) {
-      console.error('Members Error: ', membersError?.message);
-      return;
-    }
-
-    const formattedMembers: Member[] = mems.map((m: any) => ({
-      user_id: m.user_id,
-      username: m.users?.username || 'Unknown',
-    }));
-
-    setMembers(formattedMembers);
-
-    // Get the current session
-    const { data: session, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) {
-      console.error('Session Error: ', sessionError.message);
-      return;
-    }
-
-    if (!session) {
-      console.log('No session found. User not logged in.');
-      return setToast({ show: true, msg: 'User not logged in' });
-    }
-
-    // Check if current user is already joined
-    const { data: user, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      console.log('User Error: ', userError?.message);
-      return setToast({ show: true, msg: 'User not logged in' });
-    }
-
-    const alreadyJoined = mems.some((m: any) => m.user_id === user.id);
-    setJoined(alreadyJoined);
-  };
-
-  const handleJoin = async () => {
-    const { data: session, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) {
-      console.error('Session Error: ', sessionError.message);
-      return setToast({ show: true, msg: 'Error checking session' });
-    }
-
-    if (!session) {
-      console.log('No session found. User not logged in.');
-      return setToast({ show: true, msg: 'User not logged in' });
-    }
-
-    const { data: user, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      console.log('User Error: ', userError?.message);
-      return setToast({ show: true, msg: 'User not logged in' });
-    }
-
-    const uid = user.id;
-    if (!uid) {
-      return setToast({ show: true, msg: 'User ID not found' });
-    }
-
-    // Insert new row in group_members table
-    const { error } = await supabase.from('group_members').insert([
-      { group_id: Number(id), user_id: uid },
-    ]);
-
-    if (error) {
-      console.error('Error inserting group member: ', error.message);
-      return setToast({ show: true, msg: error.message });
-    }
-
-    setToast({ show: true, msg: 'Joined group successfully!' });
-    fetchDetails(); // Refresh the group details after joining
-  };
+  const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState('');
+  const [isMember, setIsMember] = useState(false);
+  const [memberCount, setMemberCount] = useState(0);
+  const [isEditing, setIsEditing] = useState(false); // For toggling edit mode
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const history = useHistory();
 
   useEffect(() => {
-    fetchDetails();
+    const fetchData = async () => {
+      setLoading(true);
+      const user = await supabase.auth.getUser();
+      const userId = user.data.user?.id;
+
+      // Fetch group info
+      const { data: groupData, error: groupError } = await supabase
+        .from('groups')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (groupError) {
+        console.error('Error fetching group:', groupError);
+      } else {
+        setGroup(groupData);
+        setNewGroupName(groupData.name); // Set the initial name
+        setNewDescription(groupData.description); // Set the initial description
+      }
+
+      // Fetch user role
+      if (userId) {
+        const { data: userData, error: roleError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', userId)
+          .single();
+
+        if (!roleError && userData) {
+          setRole(userData.role);
+        }
+      }
+
+      // Check if user is already a member
+      if (userId) {
+        const { data: membershipData, error: memberError } = await supabase
+          .from('group_members')
+          .select('*')
+          .eq('group_id', id)
+          .eq('user_id', userId)
+          .single();
+
+        if (!memberError && membershipData) {
+          setIsMember(true);
+        }
+      }
+
+      // Count total members
+      const { count, error: countError } = await supabase
+        .from('group_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('group_id', id);
+
+      if (!countError && count !== null) {
+        setMemberCount(count);
+      }
+
+      setLoading(false);
+    };
+
+    fetchData();
   }, [id]);
 
-  if (!group) {
-    return (
-      <IonPage>
-        <IonContent className="ion-padding">Loading group details...</IonContent>
-      </IonPage>
-    );
-  }
+  const handleJoinOrCancel = async () => {
+    const user = await supabase.auth.getUser();
+    const userId = user.data.user?.id;
+
+    if (!userId) {
+      alert('You must be logged in to join a group');
+      return;
+    }
+
+    if (isMember) {
+      // Cancel membership
+      const { error } = await supabase
+        .from('group_members')
+        .delete()
+        .eq('group_id', id)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error canceling join:', error);
+        alert('Error leaving group');
+      } else {
+        setIsMember(false);
+        setMemberCount((prev) => prev - 1);
+        alert('You have left the group.');
+      }
+    } else {
+      // Join group
+      const { error } = await supabase.from('group_members').insert({
+        group_id: id,
+        user_id: userId,
+      });
+
+      if (error) {
+        console.error('Error joining group:', error);
+        alert('Error joining group');
+      } else {
+        setIsMember(true);
+        setMemberCount((prev) => prev + 1);
+        alert('Successfully joined the group!');
+      }
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    if (newGroupName && newDescription) {
+      const { error } = await supabase
+        .from('groups')
+        .update({ name: newGroupName, description: newDescription })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating group:', error);
+        alert('Error saving changes');
+      } else {
+        setGroup((prevGroup) => ({
+          ...prevGroup!,
+          name: newGroupName,
+          description: newDescription,
+        }));
+        setIsEditing(false);
+        alert('Changes saved successfully!');
+      }
+    } else {
+      alert('Both name and description must be filled');
+    }
+  };
 
   return (
     <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonTitle>Group Details</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+
       <IonContent className="ion-padding">
-        <h2>{group.name}</h2>
-        <p><strong>Subject:</strong> {group.subject}</p>
-        <p><strong>Members:</strong> {members.map(m => m.username).join(', ')}</p>
-        {!joined && (
-          <IonButton expand="block" onClick={handleJoin}>Join Group</IonButton>
+        {loading ? (
+          <IonSpinner name="crescent" />
+        ) : group ? (
+          <IonCard>
+            <IonCardHeader>
+              <IonCardTitle>{group.name}</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              {role === 'Teacher' && isEditing ? (
+                <>
+                  <IonInput
+                    value={newGroupName}
+                    onIonChange={(e) => setNewGroupName(e.detail.value!)}
+                    label="Group Name"
+                  />
+                  <IonTextarea
+                    value={newDescription}
+                    onIonChange={(e) => setNewDescription(e.detail.value!)}
+                    label="Description"
+                    rows={5}
+                  />
+                  <IonButton expand="block" onClick={handleSaveChanges}>
+                    Save Changes
+                  </IonButton>
+                  <IonButton expand="block" color="medium" onClick={() => setIsEditing(false)}>
+                    Cancel
+                  </IonButton>
+                </>
+              ) : (
+                <>
+                  <p><strong>Description:</strong> {group.description}</p>
+                  <p><strong>Members Joined:</strong> {memberCount}</p>
+
+                  {role === 'Student' && (
+                    <IonButton expand="block" color={isMember ? 'danger' : 'success'} onClick={handleJoinOrCancel}>
+                      {isMember ? 'Cancel Join' : 'Join Group'}
+                    </IonButton>
+                  )}
+
+                  {role === 'Teacher' && !isEditing && (
+                    <IonButton expand="block" color="warning" onClick={() => setIsEditing(true)}>
+                      Edit Group
+                    </IonButton>
+                  )}
+                </>
+              )}
+            </IonCardContent>
+          </IonCard>
+        ) : (
+          <IonText color="danger">Group not found.</IonText>
         )}
-        <IonToast
-          isOpen={toast.show}
-          message={toast.msg}
-          duration={2000}
-          onDidDismiss={() => setToast({ show: false, msg: '' })}
-        />
+
+        <IonButton expand="block" onClick={() => history.goBack()}>
+          Back
+        </IonButton>
       </IonContent>
     </IonPage>
   );
